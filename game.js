@@ -28,6 +28,10 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
+const BOMB_INTERVAL = 10;
+COLORS[8] = '#ff4444'; // bomb - red
+PIECES[8] = [[8]];     // 1×1 bomb
+
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 const nextCanvas = document.getElementById('next-canvas');
@@ -40,14 +44,20 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let board, current, next, score, lines, level, paused, gameOver, bombNext, lastTime, dropAccum, dropInterval, animId;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
 }
 
 function randomPiece() {
-  const type = Math.floor(Math.random() * 7) + 1;
+  let type;
+  if (bombNext) {
+    type = 8;
+    bombNext = false;
+  } else {
+    type = Math.floor(Math.random() * 7) + 1;
+  }
   const shape = PIECES[type].map(row => [...row]);
   return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
 }
@@ -104,7 +114,11 @@ function clearLines() {
     }
   }
   if (cleared) {
+    const prevLines = lines;
     lines += cleared;
+    if (Math.floor(lines / BOMB_INTERVAL) > Math.floor(prevLines / BOMB_INTERVAL)) {
+      bombNext = true;
+    }
     score += (LINE_SCORES[cleared] || 0) * level;
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
@@ -136,9 +150,25 @@ function softDrop() {
 }
 
 function lockPiece() {
-  merge();
+  if (current.type === 8) {
+    explodeBomb(current.x, current.y);
+  } else {
+    merge();
+  }
   clearLines();
   spawn();
+}
+
+function explodeBomb(bx, by) {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = bx + dx;
+      const ny = by + dy;
+      if (ny >= 0 && ny < ROWS && nx >= 0 && nx < COLS) {
+        board[ny][nx] = 0;
+      }
+    }
+  }
 }
 
 function spawn() {
@@ -165,6 +195,12 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
   // highlight
   context.fillStyle = 'rgba(255,255,255,0.12)';
   context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  if (colorIndex === 8) {
+    context.font = `${Math.floor(size * 0.7)}px serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('💣', x * size + size / 2, y * size + size / 2);
+  }
   context.globalAlpha = 1;
 }
 
@@ -263,6 +299,7 @@ function init() {
   level = 1;
   paused = false;
   gameOver = false;
+  bombNext = false;
   dropInterval = 1000;
   dropAccum = 0;
   lastTime = performance.now();
